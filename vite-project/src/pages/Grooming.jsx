@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
   Scissors,
@@ -20,18 +19,20 @@ import {
   CheckCircle,
   Loader,
   Heart,
-  Truck,  // ← Added Truck import
+  Truck,
   User,
-  Home
+  Home,
+  AlertCircle
 } from 'lucide-react';
 
 const Grooming = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, api } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState([]);
   const [pets, setPets] = useState([]);
   const [fetchingData, setFetchingData] = useState(true);
+  const [error, setError] = useState(null);
   
   const [formData, setFormData] = useState({
     petId: '',
@@ -45,103 +46,73 @@ const Grooming = () => {
   // Fetch grooming services and pets
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [isAuthenticated]);
 
-// src/pages/Grooming.jsx (updated fetch function)
-const fetchData = async () => {
-  try {
-    setFetchingData(true);
-    // Fetch all services
-    const servicesRes = await axios.get('/api/services');
-    
-    // Filter services that are grooming related
-    // Now we have actual grooming category in the database
-    const groomingServices = servicesRes.data.filter(s => 
-      s.category === 'grooming' || 
-      s.name.toLowerCase().includes('groom') || 
-      s.name.toLowerCase().includes('bath') ||
-      s.name.toLowerCase().includes('brush') ||
-      s.name.toLowerCase().includes('trim')
-    );
-    
-    // If no grooming services found, use fallback
-    if (groomingServices.length === 0) {
-      setServices([
-        {
-          id: 1,
-          name: 'Basic Grooming',
-          price: 35,
-          duration_minutes: 60,
-          description: 'Bath, brush, nail trim, and ear cleaning for your pet'
-        },
-        {
-          id: 2,
-          name: 'Full Grooming',
-          price: 55,
-          duration_minutes: 90,
-          description: 'Complete grooming package including bath, brush, haircut, nail trim, ear cleaning, and teeth brushing'
-        },
-        {
-          id: 3,
-          name: 'Deluxe Grooming',
-          price: 75,
-          duration_minutes: 120,
-          description: 'Premium grooming with spa treatment, de-shedding, and premium products'
-        },
-        {
-          id: 4,
-          name: 'Mobile Grooming',
-          price: 85,
-          duration_minutes: 90,
-          description: 'Full grooming service at your home - we come to you!'
+  const fetchData = async () => {
+    try {
+      setFetchingData(true);
+      setError(null);
+      
+      // Fetch all services
+      const servicesRes = await api.get('/services');
+      console.log('Services response:', servicesRes.data);
+      
+      // Filter services that are grooming related
+      const allServices = servicesRes.data || [];
+      const groomingServices = allServices.filter(s => 
+        s.category === 'grooming' || 
+        s.name?.toLowerCase().includes('groom') || 
+        s.name?.toLowerCase().includes('bath') ||
+        s.name?.toLowerCase().includes('brush') ||
+        s.name?.toLowerCase().includes('trim') ||
+        s.name?.toLowerCase().includes('cut') ||
+        s.name?.toLowerCase().includes('style') ||
+        s.name?.toLowerCase().includes('spa')
+      );
+      
+      console.log('Grooming services found:', groomingServices.length);
+      
+      if (groomingServices.length > 0) {
+        setServices(groomingServices);
+      } else {
+        // If no grooming services found, try to get all services and filter differently
+        const fallbackServices = allServices.filter(s => 
+          s.category === 'grooming' || 
+          s.category === 'general'
+        );
+        if (fallbackServices.length > 0) {
+          setServices(fallbackServices);
+        } else {
+          // Use all services if no grooming specific ones
+          setServices(allServices);
         }
-      ]);
-    } else {
-      setServices(groomingServices);
-    }
-
-    // Fetch user's pets if authenticated
-    if (isAuthenticated) {
-      const petsRes = await axios.get('/api/pets');
-      setPets(petsRes.data);
-    }
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    // Use fallback data
-    setServices([
-      {
-        id: 1,
-        name: 'Basic Grooming',
-        price: 35,
-        duration_minutes: 60,
-        description: 'Bath, brush, nail trim, and ear cleaning for your pet'
-      },
-      {
-        id: 2,
-        name: 'Full Grooming',
-        price: 55,
-        duration_minutes: 90,
-        description: 'Complete grooming package including bath, brush, haircut, nail trim, ear cleaning, and teeth brushing'
-      },
-      {
-        id: 3,
-        name: 'Deluxe Grooming',
-        price: 75,
-        duration_minutes: 120,
-        description: 'Premium grooming with spa treatment, de-shedding, and premium products'
-      },
-      {
-        id: 4,
-        name: 'Mobile Grooming',
-        price: 85,
-        duration_minutes: 90,
-        description: 'Full grooming service at your home - we come to you!'
       }
-    ]);
-  } finally {
-    setFetchingData(false);
-  }
-};
+
+      // Fetch user's pets if authenticated
+      if (isAuthenticated) {
+        try {
+          const petsRes = await api.get('/pets');
+          setPets(petsRes.data || []);
+          console.log('Pets fetched:', petsRes.data?.length || 0);
+        } catch (petError) {
+          console.error('Error fetching pets:', petError);
+          if (petError.response?.status === 401) {
+            toast.error('Please login to view your pets');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setError(error.message || 'Failed to load data');
+      if (error.response?.status === 401) {
+        toast.error('Please login to book grooming');
+      } else {
+        toast.error('Failed to load grooming services');
+      }
+    } finally {
+      setFetchingData(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -156,13 +127,28 @@ const fetchData = async () => {
       return;
     }
 
+    // Validate form
+    if (!formData.petId) {
+      toast.error('Please select a pet');
+      return;
+    }
+    if (!formData.serviceId) {
+      toast.error('Please select a service');
+      return;
+    }
+    if (!formData.date) {
+      toast.error('Please select a date');
+      return;
+    }
+    if (!formData.time) {
+      toast.error('Please select a time');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Get the selected service details
-      const selectedService = services.find(s => s.id === parseInt(formData.serviceId));
-      
-      // Create appointment
-      await axios.post('/api/appointments', {
+      // Create appointment using authenticated api
+      await api.post('/appointments', {
         petId: parseInt(formData.petId),
         serviceId: parseInt(formData.serviceId),
         appointmentDate: formData.date,
@@ -182,6 +168,7 @@ const fetchData = async () => {
       });
       navigate('/bookings');
     } catch (error) {
+      console.error('Booking error:', error);
       toast.error(error.response?.data?.message || 'Failed to book grooming');
     } finally {
       setLoading(false);
@@ -223,21 +210,29 @@ const fetchData = async () => {
           <div className="lg:col-span-2">
             <div className="card p-6 mb-8">
               <h2 className="text-2xl font-bold mb-6">Our Grooming Services</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {services.map((service) => (
-                  <div key={service.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold">{service.name}</h3>
-                      <span className="text-lg font-bold text-purple-600">${service.price}</span>
+              {services.length === 0 ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-3" />
+                  <p className="text-gray-600">No grooming services available at the moment.</p>
+                  <p className="text-sm text-gray-500 mt-2">Please check back later.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {services.map((service) => (
+                    <div key={service.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold">{service.name}</h3>
+                        <span className="text-lg font-bold text-purple-600">${service.price}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">{service.description}</p>
+                      <p className="text-xs text-gray-500 flex items-center space-x-1">
+                        <Clock className="h-3 w-3" />
+                        <span>{service.duration_minutes} minutes</span>
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{service.description}</p>
-                    <p className="text-xs text-gray-500 flex items-center space-x-1">
-                      <Clock className="h-3 w-3" />
-                      <span>{service.duration_minutes} minutes</span>
-                    </p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Why Choose Us */}
@@ -264,106 +259,128 @@ const fetchData = async () => {
           <div className="lg:col-span-1">
             <div className="card p-6 sticky top-24">
               <h2 className="text-2xl font-bold mb-4">Book Grooming</h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Select Pet
-                  </label>
-                  <select
-                    name="petId"
-                    value={formData.petId}
-                    onChange={handleChange}
-                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
+              {!isAuthenticated ? (
+                <div className="text-center py-4">
+                  <p className="text-gray-600 mb-3">Please login to book grooming</p>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
                   >
-                    <option value="">Select your pet</option>
-                    {pets.map((pet) => (
-                      <option key={pet.id} value={pet.id}>
-                        {pet.name} ({pet.type})
-                      </option>
-                    ))}
-                  </select>
+                    Login
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Service
-                  </label>
-                  <select
-                    name="serviceId"
-                    value={formData.serviceId}
-                    onChange={handleChange}
-                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Select Pet
+                    </label>
+                    <select
+                      name="petId"
+                      value={formData.petId}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      required
+                    >
+                      <option value="">Select your pet</option>
+                      {pets.map((pet) => (
+                        <option key={pet.id} value={pet.id}>
+                          {pet.name} ({pet.type})
+                        </option>
+                      ))}
+                    </select>
+                    {pets.length === 0 && (
+                      <p className="text-sm text-yellow-600 mt-1">No pets registered. Please add a pet first.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service
+                    </label>
+                    <select
+                      name="serviceId"
+                      value={formData.serviceId}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      required
+                    >
+                      <option value="">Select service</option>
+                      {services.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name} - ${service.price}
+                        </option>
+                      ))}
+                    </select>
+                    {services.length === 0 && (
+                      <p className="text-sm text-yellow-600 mt-1">No services available</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      name="date"
+                      value={formData.date}
+                      onChange={handleChange}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Time
+                    </label>
+                    <input
+                      type="time"
+                      name="time"
+                      value={formData.time}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Special Notes
+                    </label>
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleChange}
+                      rows="2"
+                      className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="Any special requests..."
+                    />
+                  </div>
+                  <button 
+                    type="submit" 
+                    disabled={loading || services.length === 0}
+                    className="w-full bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
                   >
-                    <option value="">Select service</option>
-                    {services.map((service) => (
-                      <option key={service.id} value={service.id}>
-                        {service.name} - ${service.price}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Time
-                  </label>
-                  <input
-                    type="time"
-                    name="time"
-                    value={formData.time}
-                    onChange={handleChange}
-                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Special Notes
-                  </label>
-                  <textarea
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleChange}
-                    rows="2"
-                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="Any special requests..."
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="w-full bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Booking...' : 'Book Grooming'}
-                </button>
-              </form>
+                    {loading ? (
+                      <Loader className="h-5 w-5 animate-spin mx-auto" />
+                    ) : (
+                      'Book Grooming'
+                    )}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>

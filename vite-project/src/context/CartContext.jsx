@@ -1,6 +1,7 @@
 // src/context/CartContext.jsx
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { APP_CONFIG } from '../config/constants';
 
 const CartContext = createContext();
 
@@ -8,7 +9,7 @@ export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState(APP_CONFIG.currency);
 
   useEffect(() => {
     const savedCart = localStorage.getItem('cart');
@@ -65,6 +66,19 @@ export const CartProvider = ({ children }) => {
     return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
   };
 
+  const getShippingCost = () => {
+    const total = getTotalPrice();
+    return total > APP_CONFIG.freeShippingThreshold ? 0 : APP_CONFIG.shippingRate;
+  };
+
+  const getTax = () => {
+    return getTotalPrice() * APP_CONFIG.taxRate;
+  };
+
+  const getGrandTotal = () => {
+    return getTotalPrice() + getShippingCost() + getTax();
+  };
+
   const value = {
     cartItems,
     currency,
@@ -74,7 +88,10 @@ export const CartProvider = ({ children }) => {
     updateQuantity,
     clearCart,
     getTotalItems,
-    getTotalPrice
+    getTotalPrice,
+    getShippingCost,
+    getTax,
+    getGrandTotal
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

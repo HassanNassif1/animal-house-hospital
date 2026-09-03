@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
   Dog,
@@ -24,7 +23,7 @@ import {
 } from 'lucide-react';
 
 const Boarding = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, api } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [pets, setPets] = useState([]);
@@ -46,11 +45,14 @@ const Boarding = () => {
     try {
       setFetchingData(true);
       if (isAuthenticated) {
-        const response = await axios.get('/api/pets');
-        setPets(response.data);
+        const response = await api.get('/pets');
+        setPets(response.data || []);
       }
     } catch (error) {
       console.error('Error fetching pets:', error);
+      if (error.response?.status === 401) {
+        toast.error('Please login to view your pets');
+      }
     } finally {
       setFetchingData(false);
     }
@@ -71,7 +73,7 @@ const Boarding = () => {
 
     setLoading(true);
     try {
-      await axios.post('/api/bookings', {
+      await api.post('/bookings', {
         petId: parseInt(formData.petId),
         bookingType: 'boarding',
         startDate: formData.checkIn,
@@ -212,6 +214,9 @@ const Boarding = () => {
                       </option>
                     ))}
                   </select>
+                  {pets.length === 0 && (
+                    <p className="text-sm text-yellow-600 mt-1">No pets registered. Please add a pet first.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -270,7 +275,7 @@ const Boarding = () => {
                 </div>
                 <button 
                   type="submit" 
-                  disabled={loading}
+                  disabled={loading || !isAuthenticated}
                   className="w-full btn-primary py-3 disabled:opacity-50"
                 >
                   {loading ? 'Submitting...' : 'Book Boarding'}

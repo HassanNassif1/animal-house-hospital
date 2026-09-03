@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import axios from 'axios';
+
+import { PRODUCT_CATEGORIES } from '../config/constants';
 import { 
   Search, 
-  Filter, 
   ShoppingCart,
-  ChevronDown,
   Dog,
-  Cat
+  Cat,
+  Loader
 } from 'lucide-react';
 
 const Shop = () => {
@@ -16,19 +17,8 @@ const Shop = () => {
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1 });
+  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const { addToCart } = useCart();
-
-  const categories = [
-    { value: 'all', label: 'All Products' },
-    { value: 'dog', label: 'Dogs', icon: Dog },
-    { value: 'cat', label: 'Cats', icon: Cat }
-  ];
-
-  const subcategories = {
-    dog: ['food', 'toys', 'supplements', 'accessories'],
-    cat: ['food', 'toys', 'supplements', 'accessories']
-  };
 
   useEffect(() => {
     fetchProducts();
@@ -44,14 +34,16 @@ const Shop = () => {
       if (category !== 'all') params.category = category;
       if (search) params.search = search;
 
-      const response = await axios.get('/api/products', { params });
-      setProducts(response.data.products);
+      const response = await axios.get(`api/products`, { params });
+      setProducts(response.data.products || []);
       setPagination(prev => ({
         ...prev,
-        totalPages: response.data.pagination.totalPages
+        totalPages: response.data.pagination?.totalPages || 1,
+        total: response.data.pagination?.total || 0
       }));
     } catch (error) {
       console.error('Error fetching products:', error);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -64,7 +56,7 @@ const Shop = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <Loader className="h-12 w-12 animate-spin text-primary-600" />
       </div>
     );
   }
@@ -93,8 +85,8 @@ const Shop = () => {
             />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2">
-            {categories.map((cat) => {
-              const Icon = cat.icon;
+            {PRODUCT_CATEGORIES.map((cat) => {
+              const Icon = cat.value === 'dog' ? Dog : cat.value === 'cat' ? Cat : null;
               return (
                 <button
                   key={cat.value}
@@ -119,7 +111,13 @@ const Shop = () => {
             <div key={product.id} className="card overflow-hidden">
               <div className="p-4">
                 <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-                  <ShoppingCart className="h-12 w-12 text-gray-400" />
+                  {product.category === 'dog' ? (
+                    <Dog className="h-12 w-12 text-gray-400" />
+                  ) : product.category === 'cat' ? (
+                    <Cat className="h-12 w-12 text-gray-400" />
+                  ) : (
+                    <ShoppingCart className="h-12 w-12 text-gray-400" />
+                  )}
                 </div>
                 <h3 className="font-semibold text-lg mb-1">{product.name}</h3>
                 <p className="text-gray-600 text-sm mb-2">{product.description}</p>

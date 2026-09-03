@@ -1,34 +1,35 @@
 // src/pages/Adoption.jsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
   Heart,
   PawPrint,
   Dog,
   Cat,
-  MapPin,
   Calendar,
-  Phone,
   Mail,
+  Clock,
   Search,
-  Filter,
-  Star,
-  CheckCircle,
   Award,
   Loader,
   User,
-  Home
+  CheckCircle
 } from 'lucide-react';
 
+
 const Adoption = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, api } = useAuth();
   const [pets, setPets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [stats, setStats] = useState({
+    available: 0,
+    adopted: 0,
+    total: 0
+  });
 
   useEffect(() => {
     fetchPets();
@@ -37,66 +38,58 @@ const Adoption = () => {
   const fetchPets = async () => {
     try {
       setLoading(true);
-      // In a real app, you'd have an adoption endpoint
-      // For now, we'll fetch all pets and filter for adoption
-      const response = await axios.get('/api/pets');
-      // Add adoption status to pets (in a real app, this would come from the database)
-      const petsWithAdoption = response.data.map(pet => ({
-        ...pet,
-        adoptionStatus: Math.random() > 0.3 ? 'available' : 'adopted',
-        adoptionDescription: `Looking for a loving home. ${pet.name} is a ${pet.age || 'young'} ${pet.type} who loves to play and cuddle.`,
-        adoptionContact: 'adoption@animalhousehospital.com'
-      }));
-      setPets(petsWithAdoption);
+      // Fetch adoption pets from the adoption endpoint
+      const response = await api.get('/adoption/pets');
+      
+      if (response.data && response.data.length > 0) {
+        // Map the pets data with adoption status from database
+        const petsWithAdoption = response.data.map(pet => ({
+          id: pet.id,
+          name: pet.name,
+          type: pet.type,
+          breed: pet.breed || 'Unknown',
+          age: pet.age || 0,
+          gender: pet.gender || 'Unknown',
+          weight: pet.weight,
+          medical_notes: pet.medical_notes,
+          // Use database fields if they exist, otherwise set defaults
+          adoptionStatus: pet.adoption_status || 'available',
+          adoptionDescription: pet.adoption_description || `Looking for a loving home. ${pet.name} is a ${pet.age || 'young'} ${pet.type} who loves to play and cuddle.`,
+          adoptionContact: pet.adoption_contact || 'adoption@animalhousehospital.com',
+          created_at: pet.created_at
+        }));
+        setPets(petsWithAdoption);
+        
+        // Calculate stats
+        const available = petsWithAdoption.filter(p => p.adoptionStatus === 'available').length;
+        const adopted = petsWithAdoption.filter(p => p.adoptionStatus === 'adopted').length;
+        const pending = petsWithAdoption.filter(p => p.adoptionStatus === 'pending').length;
+        setStats({
+          available,
+          adopted,
+          pending,
+          total: petsWithAdoption.length
+        });
+      } else {
+        // If no pets in database, show empty state
+        setPets([]);
+        setStats({
+          available: 0,
+          adopted: 0,
+          pending: 0,
+          total: 0
+        });
+      }
     } catch (error) {
       console.error('Error fetching pets:', error);
-      // Fallback data if API fails
-      setPets([
-        {
-          id: 1,
-          name: 'Max',
-          type: 'dog',
-          breed: 'Golden Retriever',
-          age: 2,
-          gender: 'Male',
-          adoptionStatus: 'available',
-          adoptionDescription: 'Friendly and energetic dog looking for an active family.',
-          adoptionContact: 'adoption@animalhousehospital.com'
-        },
-        {
-          id: 2,
-          name: 'Luna',
-          type: 'cat',
-          breed: 'Siamese',
-          age: 1,
-          gender: 'Female',
-          adoptionStatus: 'available',
-          adoptionDescription: 'Affectionate cat who loves to cuddle and play.',
-          adoptionContact: 'adoption@animalhousehospital.com'
-        },
-        {
-          id: 3,
-          name: 'Charlie',
-          type: 'dog',
-          breed: 'Beagle',
-          age: 3,
-          gender: 'Male',
-          adoptionStatus: 'adopted',
-          adoptionDescription: 'Playful and loyal companion great with kids.',
-          adoptionContact: 'adoption@animalhousehospital.com'
-        },
-        {
-          id: 4,
-          name: 'Milo',
-          type: 'cat',
-          breed: 'Persian',
-          age: 4,
-          gender: 'Male',
-          adoptionStatus: 'available',
-          adoptionDescription: 'Calm and independent cat who enjoys quiet environments.',
-          adoptionContact: 'adoption@animalhousehospital.com'
-        }
-      ]);
+      toast.error('Failed to load pets. Please try again.');
+      setPets([]);
+      setStats({
+        available: 0,
+        adopted: 0,
+        pending: 0,
+        total: 0
+      });
     } finally {
       setLoading(false);
     }
@@ -110,24 +103,29 @@ const Adoption = () => {
 
     setSubmitting(true);
     try {
-      // In a real app, you'd send an adoption request to the backend
-      // For now, we'll simulate it
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Send email notification (simulated)
-      await axios.post('/api/adoption/request', {
+      // Send adoption request to backend
+      await api.post('/adoption/request', {
         petId: pet.id,
-        userId: user.id,
         message: `I would like to adopt ${pet.name}`
       });
       
       toast.success(`Adoption request sent for ${pet.name}! We will contact you shortly.`);
+      
       // Update pet status locally
       setPets(pets.map(p => 
         p.id === pet.id ? { ...p, adoptionStatus: 'pending' } : p
       ));
+      
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        available: prev.available - 1,
+        pending: (prev.pending || 0) + 1
+      }));
+      
     } catch (error) {
-      toast.error('Failed to submit adoption request. Please try again.');
+      console.error('Adoption request error:', error);
+      toast.error(error.response?.data?.message || 'Failed to submit adoption request. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -135,16 +133,10 @@ const Adoption = () => {
 
   const filteredPets = pets.filter(pet => {
     const matchesType = filter === 'all' || pet.type === filter;
-    const matchesSearch = pet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         pet.breed.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = pet.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         pet.breed?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesType && matchesSearch && pet.adoptionStatus === 'available';
   });
-
-  const stats = [
-    { icon: PawPrint, label: 'Available Pets', value: pets.filter(p => p.adoptionStatus === 'available').length },
-    { icon: Heart, label: 'Adopted', value: pets.filter(p => p.adoptionStatus === 'adopted').length },
-    { icon: Award, label: 'Years of Service', value: '10+' }
-  ];
 
   if (loading) {
     return (
@@ -170,17 +162,27 @@ const Adoption = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {stats.map((stat, index) => {
-            const Icon = stat.icon;
-            return (
-              <div key={index} className="card p-6 text-center">
-                <Icon className="h-10 w-10 text-pink-600 mx-auto mb-2" />
-                <div className="text-3xl font-bold text-pink-600">{stat.value}</div>
-                <div className="text-gray-600">{stat.label}</div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+          <div className="card p-6 text-center">
+            <PawPrint className="h-10 w-10 text-pink-600 mx-auto mb-2" />
+            <div className="text-3xl font-bold text-pink-600">{stats.available || 0}</div>
+            <div className="text-gray-600">Available Pets</div>
+          </div>
+          <div className="card p-6 text-center">
+            <Heart className="h-10 w-10 text-pink-600 mx-auto mb-2" />
+            <div className="text-3xl font-bold text-pink-600">{stats.adopted || 0}</div>
+            <div className="text-gray-600">Adopted</div>
+          </div>
+          <div className="card p-6 text-center">
+            <Clock className="h-10 w-10 text-yellow-600 mx-auto mb-2" />
+            <div className="text-3xl font-bold text-yellow-600">{stats.pending || 0}</div>
+            <div className="text-gray-600">Pending</div>
+          </div>
+          <div className="card p-6 text-center">
+            <Award className="h-10 w-10 text-pink-600 mx-auto mb-2" />
+            <div className="text-3xl font-bold text-pink-600">{stats.total || 0}</div>
+            <div className="text-gray-600">Total Pets</div>
+          </div>
         </div>
 
         {/* Search and Filter */}
@@ -226,78 +228,84 @@ const Adoption = () => {
         </div>
 
         {/* Pets Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPets.map((pet) => (
-            <div key={pet.id} className="card overflow-hidden">
-              <div className="relative">
-                <div className="bg-gray-100 h-48 flex items-center justify-center text-6xl">
-                  {pet.type === 'dog' ? '🐕' : '🐱'}
-                </div>
-                {pet.adoptionStatus === 'adopted' && (
-                  <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm">
-                    Adopted
-                  </div>
-                )}
-                {pet.adoptionStatus === 'pending' && (
-                  <div className="absolute top-4 right-4 bg-yellow-600 text-white px-3 py-1 rounded-full text-sm">
-                    Pending
-                  </div>
-                )}
-              </div>
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="text-xl font-bold">{pet.name}</h3>
-                    <p className="text-sm text-gray-600">{pet.breed}</p>
-                  </div>
-                  <span className="text-2xl">
-                    {pet.type === 'dog' ? '🐕' : '🐱'}
-                  </span>
-                </div>
-                <div className="space-y-2 text-sm text-gray-600 mb-4">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>{pet.age} years</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <User className="h-4 w-4" />
-                    <span>{pet.gender}</span>
-                  </div>
-                </div>
-                <p className="text-gray-600 text-sm mb-4">{pet.adoptionDescription}</p>
-                <div className="flex items-center space-x-2 text-sm text-gray-500 mb-4">
-                  <Mail className="h-4 w-4" />
-                  <span>{pet.adoptionContact}</span>
-                </div>
-                <button
-                  onClick={() => handleAdopt(pet)}
-                  disabled={pet.adoptionStatus !== 'available' || submitting}
-                  className={`w-full py-2 rounded-lg transition-colors ${
-                    pet.adoptionStatus === 'available'
-                      ? 'bg-pink-600 text-white hover:bg-pink-700'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  {submitting ? (
-                    <Loader className="h-5 w-5 animate-spin mx-auto" />
-                  ) : pet.adoptionStatus === 'available' ? (
-                    'Apply to Adopt'
-                  ) : pet.adoptionStatus === 'pending' ? (
-                    'Pending Approval'
-                  ) : (
-                    'Already Adopted'
-                  )}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {filteredPets.length === 0 && (
+        {filteredPets.length === 0 ? (
           <div className="text-center py-12">
             <Heart className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No pets found</h3>
-            <p className="text-gray-500">Try adjusting your search or filter criteria.</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No pets available for adoption</h3>
+            <p className="text-gray-500">Check back soon! New pets are added regularly.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPets.map((pet) => (
+              <div key={pet.id} className="card overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative">
+                  <div className="bg-gray-100 h-48 flex items-center justify-center text-6xl">
+                    {pet.type === 'dog' ? '🐕' : pet.type === 'cat' ? '🐱' : '🐾'}
+                  </div>
+                  {pet.adoptionStatus === 'adopted' && (
+                    <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm">
+                      Adopted
+                    </div>
+                  )}
+                  {pet.adoptionStatus === 'pending' && (
+                    <div className="absolute top-4 right-4 bg-yellow-600 text-white px-3 py-1 rounded-full text-sm">
+                      Pending
+                    </div>
+                  )}
+                </div>
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h3 className="text-xl font-bold">{pet.name}</h3>
+                      <p className="text-sm text-gray-600">{pet.breed}</p>
+                    </div>
+                    <span className="text-2xl">
+                      {pet.type === 'dog' ? '🐕' : pet.type === 'cat' ? '🐱' : '🐾'}
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-sm text-gray-600 mb-4">
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>{pet.age} years</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <User className="h-4 w-4" />
+                      <span>{pet.gender}</span>
+                    </div>
+                    {pet.weight && (
+                      <div className="flex items-center space-x-2">
+                        <span>⚖️</span>
+                        <span>{pet.weight} kg</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-gray-600 text-sm mb-4">{pet.adoptionDescription}</p>
+                  <div className="flex items-center space-x-2 text-sm text-gray-500 mb-4">
+                    <Mail className="h-4 w-4" />
+                    <span>{pet.adoptionContact}</span>
+                  </div>
+                  <button
+                    onClick={() => handleAdopt(pet)}
+                    disabled={pet.adoptionStatus !== 'available' || submitting}
+                    className={`w-full py-2 rounded-lg transition-colors ${
+                      pet.adoptionStatus === 'available'
+                        ? 'bg-pink-600 text-white hover:bg-pink-700'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {submitting ? (
+                      <Loader className="h-5 w-5 animate-spin mx-auto" />
+                    ) : pet.adoptionStatus === 'available' ? (
+                      'Apply to Adopt'
+                    ) : pet.adoptionStatus === 'pending' ? (
+                      'Pending Approval'
+                    ) : (
+                      'Already Adopted'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

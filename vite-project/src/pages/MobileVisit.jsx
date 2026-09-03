@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
   Truck,
@@ -13,7 +12,6 @@ import {
   Mail,
   Stethoscope,
   CheckCircle,
-  Star,
   Users,
   Award,
   Loader,
@@ -22,7 +20,7 @@ import {
 } from 'lucide-react';
 
 const MobileVisit = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, api } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [pets, setPets] = useState([]);
@@ -47,11 +45,14 @@ const MobileVisit = () => {
     try {
       setFetchingData(true);
       if (isAuthenticated) {
-        const response = await axios.get('/api/pets');
-        setPets(response.data);
+        const response = await api.get('/pets');
+        setPets(response.data || []);
       }
     } catch (error) {
       console.error('Error fetching pets:', error);
+      if (error.response?.status === 401) {
+        toast.error('Please login to view your pets');
+      }
     } finally {
       setFetchingData(false);
     }
@@ -73,9 +74,9 @@ const MobileVisit = () => {
     setLoading(true);
     try {
       // Create appointment for mobile visit
-      await axios.post('/api/appointments', {
+      await api.post('/appointments', {
         petId: parseInt(formData.petId),
-        serviceId: null, // Mobile visit doesn't need a specific service ID
+        serviceId: null,
         appointmentDate: formData.preferredDate,
         appointmentTime: formData.preferredTime,
         appointmentType: 'mobile',
@@ -206,6 +207,9 @@ const MobileVisit = () => {
                       </option>
                     ))}
                   </select>
+                  {pets.length === 0 && (
+                    <p className="text-sm text-yellow-600 mt-1">No pets registered. Please add a pet first.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -307,7 +311,7 @@ const MobileVisit = () => {
                 </div>
                 <button 
                   type="submit" 
-                  disabled={loading}
+                  disabled={loading || !isAuthenticated}
                   className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   {loading ? 'Submitting...' : 'Request Mobile Visit'}

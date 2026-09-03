@@ -2,17 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
-import { Calendar, Clock, User, PawPrint, Stethoscope, Plus } from 'lucide-react';
+import { Calendar, Clock, User, PawPrint, Stethoscope, Plus, Loader } from 'lucide-react';
 
 const BookAppointment = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, api } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState([]);
   const [pets, setPets] = useState([]);
   const [showPetForm, setShowPetForm] = useState(false);
+  const [fetchingData, setFetchingData] = useState(true);
   
   const [formData, setFormData] = useState({
     petId: '',
@@ -38,38 +38,42 @@ const BookAppointment = () => {
       navigate('/login');
       return;
     }
-    fetchServices();
-    fetchPets();
+    fetchData();
   }, [isAuthenticated]);
 
-  const fetchServices = async () => {
+  const fetchData = async () => {
     try {
-      const response = await axios.get('/api/services');
-      setServices(response.data);
+      setFetchingData(true);
+      // Fetch services (public)
+      const servicesRes = await api.get('/services');
+      setServices(servicesRes.data || []);
+      
+      // Fetch pets (authenticated)
+      const petsRes = await api.get('/pets');
+      setPets(petsRes.data || []);
     } catch (error) {
-      console.error('Error fetching services:', error);
-    }
-  };
-
-  const fetchPets = async () => {
-    try {
-      const response = await axios.get('/api/pets');
-      setPets(response.data);
-    } catch (error) {
-      console.error('Error fetching pets:', error);
+      console.error('Error fetching data:', error);
+      if (error.response?.status === 401) {
+        toast.error('Session expired. Please login again.');
+        navigate('/login');
+      } else {
+        toast.error('Failed to load data. Please refresh.');
+      }
+    } finally {
+      setFetchingData(false);
     }
   };
 
   const handleAddPet = async () => {
     try {
-      const response = await axios.post('/api/pets', newPet);
+      const response = await api.post('/pets', newPet);
       setPets([...pets, response.data]);
       setFormData({ ...formData, petId: response.data.id });
       setShowPetForm(false);
       setNewPet({ name: '', type: 'dog', breed: '', age: '', weight: '', medicalNotes: '' });
       toast.success('Pet added successfully!');
     } catch (error) {
-      toast.error('Failed to add pet');
+      toast.error(error.response?.data?.message || 'Failed to add pet');
     }
   };
 
@@ -77,7 +81,7 @@ const BookAppointment = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await axios.post('/api/appointments', formData);
+      await api.post('/appointments', formData);
       toast.success('Appointment booked successfully!');
       navigate('/bookings');
     } catch (error) {
@@ -94,6 +98,14 @@ const BookAppointment = () => {
   const handlePetChange = (e) => {
     setNewPet({ ...newPet, [e.target.name]: e.target.value });
   };
+
+  if (fetchingData) {
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <Loader className="h-12 w-12 animate-spin text-primary-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="py-12">
@@ -132,11 +144,16 @@ const BookAppointment = () => {
                   <span>Add Pet</span>
                 </button>
               </div>
+              {pets.length === 0 && (
+                <p className="text-sm text-yellow-600 mt-2">
+                  You don't have any pets registered. Add a pet first!
+                </p>
+              )}
             </div>
 
             {/* Add Pet Form */}
             {showPetForm && (
-              <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+              <div className="bg-gray-50 p-4 rounded-lg space-y-3 border border-gray-200">
                 <h3 className="font-semibold">Add New Pet</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -145,14 +162,14 @@ const BookAppointment = () => {
                     placeholder="Pet Name"
                     value={newPet.name}
                     onChange={handlePetChange}
-                    className="border rounded-lg px-4 py-2"
+                    className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     required
                   />
                   <select
                     name="type"
                     value={newPet.type}
                     onChange={handlePetChange}
-                    className="border rounded-lg px-4 py-2"
+                    className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value="dog">Dog</option>
                     <option value="cat">Cat</option>
@@ -164,7 +181,7 @@ const BookAppointment = () => {
                     placeholder="Breed"
                     value={newPet.breed}
                     onChange={handlePetChange}
-                    className="border rounded-lg px-4 py-2"
+                    className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                   <input
                     type="number"
@@ -172,7 +189,7 @@ const BookAppointment = () => {
                     placeholder="Age"
                     value={newPet.age}
                     onChange={handlePetChange}
-                    className="border rounded-lg px-4 py-2"
+                    className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                   <input
                     type="number"
@@ -180,7 +197,7 @@ const BookAppointment = () => {
                     placeholder="Weight (kg)"
                     value={newPet.weight}
                     onChange={handlePetChange}
-                    className="border rounded-lg px-4 py-2"
+                    className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                   <input
                     type="text"
@@ -188,7 +205,7 @@ const BookAppointment = () => {
                     placeholder="Medical Notes"
                     value={newPet.medicalNotes}
                     onChange={handlePetChange}
-                    className="border rounded-lg px-4 py-2 col-span-2"
+                    className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent col-span-2"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -302,10 +319,10 @@ const BookAppointment = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full btn-primary py-3 text-lg flex items-center justify-center"
+              className="w-full btn-primary py-3 text-lg flex items-center justify-center disabled:opacity-50"
             >
               {loading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <Loader className="h-5 w-5 animate-spin" />
               ) : (
                 'Book Appointment'
               )}

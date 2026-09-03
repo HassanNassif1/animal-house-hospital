@@ -1,46 +1,46 @@
 // routes/products.js
 const express = require('express');
 const router = express.Router();
-const pool = require('../config/database');
+const { query } = require('../config/db-helper');
 
-// Get all products with filtering and pagination
+// Get all products
 router.get('/', async (req, res) => {
   try {
     const { category, subcategory, search, page = 1, limit = 12 } = req.query;
     const offset = (page - 1) * limit;
     
-    let query = 'SELECT * FROM products WHERE is_active = true';
+    let sql = 'SELECT * FROM products WHERE is_active = true';
     const params = [];
     let paramIndex = 1;
     
     if (category) {
-      query += ` AND category = $${paramIndex}`;
+      sql += ` AND category = $${paramIndex}`;
       params.push(category);
       paramIndex++;
     }
     
     if (subcategory) {
-      query += ` AND subcategory = $${paramIndex}`;
+      sql += ` AND subcategory = $${paramIndex}`;
       params.push(subcategory);
       paramIndex++;
     }
     
     if (search) {
-      query += ` AND (name ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
+      sql += ` AND (name ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
       paramIndex++;
     }
     
     // Get total count
-    const countQuery = query.replace('SELECT *', 'SELECT COUNT(*)');
-    const countResult = await pool.query(countQuery, params);
+    const countQuery = sql.replace('SELECT *', 'SELECT COUNT(*)');
+    const countResult = await query(countQuery, params);
     const total = parseInt(countResult.rows[0].count);
     
     // Get paginated results
-    query += ` ORDER BY id LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    sql += ` ORDER BY id LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(limit, offset);
     
-    const result = await pool.query(query, params);
+    const result = await query(sql, params);
     
     res.json({
       products: result.rows,
@@ -60,7 +60,7 @@ router.get('/', async (req, res) => {
 // Get product by ID
 router.get('/:id', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM products WHERE id = $1 AND is_active = true', [req.params.id]);
+    const result = await query('SELECT * FROM products WHERE id = $1 AND is_active = true', [req.params.id]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Product not found' });

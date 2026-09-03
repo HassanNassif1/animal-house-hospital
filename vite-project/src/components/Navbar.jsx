@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import animalhouseLogo from '../img/animalhousehospital.webp';
 import {
   Menu,
   X,
@@ -53,9 +54,11 @@ const Navbar = () => {
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2 flex-shrink-0">
             <PawPrint className="h-8 w-8 text-primary-600" />
-            <span className="text-xl font-bold text-gray-800 hidden sm:inline">
-              Animal House
-            </span>
+        <img
+  src={animalhouseLogo}
+  alt="Animal House Hospital"
+  className="h-4 w-auto object-contain hidden sm:inline"
+/>
           </Link>
 
           {/* Desktop Navigation */}

@@ -2,14 +2,27 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const pool = require('./config/database');
+const { pool } = require('./config/db-helper');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration - Dynamic
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+// CORS middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || isProduction) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -19,22 +32,13 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-// Test database connection
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Error connecting to the database:', err.stack);
-    process.exit(1);
-  } else {
-    console.log('✅ Connected to PostgreSQL database');
-    release();
-  }
-});
+// Request logging middleware (only in development)
+if (!isProduction) {
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
+}
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -44,6 +48,7 @@ const appointmentRoutes = require('./routes/appointments');
 const bookingRoutes = require('./routes/bookings');
 const petRoutes = require('./routes/pets');
 const userRoutes = require('./routes/users');
+const adoptionRoutes = require('./routes/adoption');
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -53,14 +58,32 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/pets', petRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/adoption', adoptionRoutes);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'disconnected';
+  let client;
+  try {
+    client = await pool.connect();
+    dbStatus = 'connected';
+    client.release();
+  } catch (err) {
+    dbStatus = 'error: ' + err.message;
+  }
+  
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: dbStatus,
+    allowedOrigins: allowedOrigins,
+    poolStats: {
+      total: pool.totalCount || 0,
+      idle: pool.idleCount || 0,
+      waiting: pool.waitingCount || 0
+    }
   });
 });
 
@@ -77,6 +100,7 @@ app.use((req, res) => {
       '/api/bookings',
       '/api/pets',
       '/api/users',
+      '/api/adoption',
       '/api/health'
     ]
   });
@@ -86,7 +110,6 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.stack);
   
-  // Handle specific error types
   if (err.code === 'ECONNREFUSED') {
     return res.status(503).json({
       success: false,
@@ -94,15 +117,22 @@ app.use((err, req, res, next) => {
     });
   }
   
-  if (err.code === '23505') { // PostgreSQL duplicate key error
+  if (err.code === '23505') {
     return res.status(409).json({
       success: false,
       message: 'Duplicate entry. This record already exists.'
     });
   }
   
-  // Default error response
-  res.status(err.status || 500).json({
+  if (err.code === '53300') {
+    return res.status(503).json({
+      success: false,
+      message: 'Too many database connections. Please try again later.'
+    });
+  }
+  
+  const statusCode = err.status || 500;
+  res.status(statusCode).json({
     success: false,
     message: err.message || 'Something went wrong!',
     ...(process.env.NODE_ENV === 'development' && { 
@@ -118,11 +148,13 @@ const server = app.listen(PORT, () => {
   console.log(`📍 API URL: http://localhost:${PORT}/api`);
   console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'Not set'}`);
+  console.log(`🔒 CORS allowed origins:`, allowedOrigins);
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
+const shutdown = () => {
+  console.log('🛑 Shutting down gracefully...');
   server.close(() => {
     console.log('HTTP server closed');
     pool.end(() => {
@@ -130,17 +162,9 @@ process.on('SIGTERM', () => {
       process.exit(0);
     });
   });
-});
+};
 
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
-    pool.end(() => {
-      console.log('Database connection pool closed');
-      process.exit(0);
-    });
-  });
-});
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = { app, server };

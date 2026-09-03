@@ -10,7 +10,8 @@ import {
   Scissors, 
   Activity,
   Search,
-  Filter
+  Filter,
+  Loader
 } from 'lucide-react';
 
 const Services = () => {
@@ -23,13 +24,16 @@ const Services = () => {
     { value: 'all', label: 'All Services' },
     { value: 'general', label: 'General Care' },
     { value: 'specialized', label: 'Specialized Medicine' },
-    { value: 'diagnostics', label: 'Diagnostics & Emergency' }
+    { value: 'diagnostics', label: 'Diagnostics & Emergency' },
+    { value: 'grooming', label: 'Grooming' }
   ];
 
   const categoryIcons = {
     general: Stethoscope,
     specialized: Heart,
-    diagnostics: Microscope
+    diagnostics: Microscope,
+    grooming: Scissors,
+    emergency: Activity
   };
 
   useEffect(() => {
@@ -38,10 +42,12 @@ const Services = () => {
 
   const fetchServices = async () => {
     try {
+      setLoading(true);
       const response = await axios.get('/api/services');
-      setServices(response.data);
+      setServices(response.data || []);
     } catch (error) {
       console.error('Error fetching services:', error);
+      setServices([]);
     } finally {
       setLoading(false);
     }
@@ -49,15 +55,15 @@ const Services = () => {
 
   const filteredServices = services.filter(service => {
     const matchesCategory = filter === 'all' || service.category === filter;
-    const matchesSearch = service.name.toLowerCase().includes(search.toLowerCase()) ||
-                         service.description.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = service.name?.toLowerCase().includes(search.toLowerCase()) ||
+                         service.description?.toLowerCase().includes(search.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <Loader className="h-12 w-12 animate-spin text-primary-600" />
       </div>
     );
   }
@@ -111,7 +117,7 @@ const Services = () => {
               <Link
                 key={service.id}
                 to={`/services/${service.id}`}
-                className="card p-6 hover:shadow-xl transition-shadow"
+                className="card p-6 hover:shadow-xl transition-shadow hover:-translate-y-1 duration-200"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="bg-primary-100 rounded-full p-3">
@@ -122,7 +128,7 @@ const Services = () => {
                   </span>
                 </div>
                 <h3 className="text-xl font-semibold mb-2">{service.name}</h3>
-                <p className="text-gray-600 text-sm mb-4">{service.description}</p>
+                <p className="text-gray-600 text-sm mb-4 line-clamp-2">{service.description}</p>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">{service.duration_minutes} min</span>
                   <span className="text-primary-600 font-medium">Learn More →</span>
@@ -135,6 +141,15 @@ const Services = () => {
         {filteredServices.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500">No services found matching your criteria.</p>
+            <button
+              onClick={() => {
+                setFilter('all');
+                setSearch('');
+              }}
+              className="text-primary-600 hover:underline mt-2"
+            >
+              Clear filters
+            </button>
           </div>
         )}
       </div>

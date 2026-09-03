@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
   Calendar,
@@ -14,11 +13,12 @@ import {
   Clock as ClockIcon,
   Trash2,
   Edit,
-  Plus
+  Plus,
+  Loader
 } from 'lucide-react';
 
 const Bookings = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, api } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -32,8 +32,8 @@ const Bookings = () => {
   const fetchBookings = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/appointments');
-      setBookings(response.data);
+      const response = await api.get('/appointments');
+      setBookings(response.data || []);
     } catch (error) {
       console.error('Error fetching bookings:', error);
       toast.error('Failed to load bookings');
@@ -46,7 +46,7 @@ const Bookings = () => {
     if (!confirm('Are you sure you want to cancel this appointment?')) return;
     
     try {
-      await axios.delete(`/api/appointments/${id}`);
+      await api.delete(`/appointments/${id}`);
       toast.success('Appointment cancelled successfully');
       fetchBookings();
     } catch (error) {
@@ -121,7 +121,7 @@ const Bookings = () => {
         {/* Bookings List */}
         {loading ? (
           <div className="flex justify-center items-center min-h-[200px]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            <Loader className="h-12 w-12 animate-spin text-primary-600" />
           </div>
         ) : filteredBookings.length === 0 ? (
           <div className="text-center py-12">
